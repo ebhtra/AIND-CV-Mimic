@@ -53,6 +53,7 @@ function onStart() {
     detector.start();  // start detector
   }
   log('#logs', "Start button pressed");
+  startGame(); // in case user hits this button to restart a game
 }
 
 // Stop button
@@ -75,6 +76,7 @@ function onReset() {
 
   // TODO(optional): You can restart the game as well
   // <your code here>
+  startGame();
 };
 
 // Add a callback to notify when camera access is allowed
@@ -103,6 +105,7 @@ detector.addEventListener("onInitializeSuccess", function() {
 
   // TODO(optional): Call a function to initialize the game, if needed
   // <your code here>
+  startGame();
 });
 
 // Add a callback to receive the results from processing an image
@@ -131,9 +134,15 @@ detector.addEventListener("onImageResultsSuccess", function(faces, image, timest
     // Call functions to draw feature points and dominant emoji (for the first face only)
     drawFeaturePoints(canvas, image, faces[0]);
     drawEmoji(canvas, image, faces[0]);
-
+    
     // TODO: Call your function to run the game (define it first!)
     // <your code here>
+    if (gameOver) { // Start a new game with a new emoji
+      gameOver = false;
+      showNextEmoji(timestamp);
+    }
+    // Main engine of the game:
+    compareFaces(faces[0].emojis.dominantEmoji, timestamp);
   }
 });
 
@@ -148,7 +157,8 @@ function drawFeaturePoints(canvas, img, face) {
   // TODO: Set the stroke and/or fill style you want for each feature point marker
   // See: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D#Fill_and_stroke_styles
   // <your code here>
-  
+  ctx.strokeStyle = "#FFFFFF";  // white color
+  //console.log(face);
   // Loop over each feature point in the face
   for (var id in face.featurePoints) {
     var featurePoint = face.featurePoints[id];
@@ -156,6 +166,10 @@ function drawFeaturePoints(canvas, img, face) {
     // TODO: Draw feature point, e.g. as a circle using ctx.arc()
     // See: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/arc
     // <your code here>
+    ctx.beginPath();
+    // Draw a small, white circle centered on each feature point
+    ctx.arc(featurePoint.x, featurePoint.y, 1.5, 0, 2*Math.PI);
+    ctx.stroke();
   }
 }
 
@@ -163,14 +177,21 @@ function drawFeaturePoints(canvas, img, face) {
 function drawEmoji(canvas, img, face) {
   // Obtain a 2D context object to draw on the canvas
   var ctx = canvas.getContext('2d');
-
+  // Use the distance between eyes to measure and place the emoji
+  var innerLeftEyeX = face.featurePoints[18].x ;
+  var outerRightEyeX = face.featurePoints[16].x ;
+  var eyeY = face.featurePoints[16].y ; // just use right eye for vertical loc
+  var emojiSize = innerLeftEyeX - outerRightEyeX;
+  
   // TODO: Set the font and style you want for the emoji
   // <your code here>
-  
+  ctx.font = emojiSize + 'px Serif'; // arbitrary choice of Serif
   // TODO: Draw it using ctx.strokeText() or fillText()
+  ctx.fillText(face.emojis.dominantEmoji, outerRightEyeX - 1.4 * emojiSize, eyeY);
   // See: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/fillText
   // TIP: Pick a particular feature point as an anchor so that the emoji sticks to your face
   // <your code here>
+
 }
 
 // TODO: Define any variables and functions to implement the Mimic Me! game mechanics
@@ -187,3 +208,62 @@ function drawEmoji(canvas, img, face) {
 // - Define a game reset function (same as init?), and call it from the onReset() function above
 
 // <your code here>
+var TimePerFace = 7;  // amount of seconds given to mimic and see result
+var FacesPerRound = 12;  // how many faces for player to mimic per turn
+
+var score;  // current score counter
+var targetFace;  // current target emoji unicode
+var startTime;  // time zero for current target emoji
+var facesTried;  // current attempts counter
+var gameOver = true;   // Boolean used to keep track of game status
+var justWon = true;  // Boolean to show alert for last success/failure
+
+function randomChoice(list) {
+  // Randomly choose and return an item from a list provided as argument
+  randIndex = Math.floor(Math.random() * list.length);
+  return list[randIndex];
+};
+
+function compareFaces(looksLike, atTime) {
+  // Compare the player's dominant emoji to the target one, at a given time,
+  //    and determine the resulting course of game play.
+  if (atTime - startTime < 2) {  // display most recent success/failure for 2 secs
+    setTargetEmoji(justWon ? 128582 : 128581);
+  } else if (atTime - startTime > TimePerFace) { // failure to mimic in time
+    setScore(score, ++facesTried);
+    justWon = false;
+    showNextEmoji(atTime);
+  } else if (toUnicode(looksLike) === targetFace) { // score a point for good mimic
+    setScore(++score, ++facesTried);
+    justWon = true;
+    showNextEmoji(atTime);
+  } else {  // After 2 seconds of showing latest result, update target display
+    setTargetEmoji(targetFace);
+  }
+};
+  
+function showNextEmoji(atTime) {
+  if (facesTried >= FacesPerRound) {
+    endGame();
+  } else {  // reset the timer and pick a new emoji
+    startTime = atTime;
+    randomEmojiCode = randomChoice(emojis);  // Pick next emoji code from list
+    setTargetEmoji(randomEmojiCode); // Update what the screen shows for a target
+    targetFace = randomEmojiCode;  // Update the target variable         
+  }
+};
+  
+function endGame() {
+  detector.stop();
+  gameOver = true;
+  setTargetEmoji(127937); // Display checkered flag      
+};
+
+function startGame() {
+  //  Reset counter variables and displays
+  setTargetEmoji(9898); // Show mirror-like circle where target emoji will be 
+  setScore(0, 0);
+  score = 0;
+  facesTried = 0;      
+};
+        
